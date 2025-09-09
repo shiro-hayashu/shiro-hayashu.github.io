@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trợ Lý Thông Minh Gemini</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen bg-gray-100 p-4">
+    <div class="container w-full max-w-2xl bg-white p-6 rounded-3xl shadow-xl flex flex-col items-center gap-6">
+        <h1 class="text-3xl font-bold text-center text-gray-800">Trợ Lý Thông Minh</h1>
+        <p class="text-center text-gray-600">Nhập yêu cầu của bạn vào ô bên dưới. Tôi sẽ tự động xử lý và đưa ra câu trả lời.</p>
+        
+        <div class="w-full flex flex-col gap-4">
+            <label for="queryInput" class="text-gray-600 font-medium">Nhập câu hỏi, chủ đề hoặc văn bản muốn xử lý:</label>
+            <textarea id="queryInput" rows="5" placeholder="Ví dụ: Bánh kếp rất ngon vì sao sang tiếng anh" class="flex-grow p-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+        </div>
+
+        <button id="mainActionButton" class="w-full bg-blue-500 text-white p-3 rounded-xl font-semibold shadow-md hover:bg-blue-600 transition">
+            Xử Lý Yêu Cầu
+        </button>
+
+        <div id="resultSection" class="hidden w-full text-center p-8 bg-gray-100 rounded-xl flex flex-col gap-4 mt-4">
+            <p id="loadingIndicator" class="text-gray-500 italic">Đang xử lý yêu cầu...</p>
+            <p id="answerDisplay" class="text-xl text-gray-700 font-medium"></p>
+        </div>
+
+        <div id="statusPopup" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
+            <div class="bg-white p-6 rounded-xl shadow-lg flex flex-col items-center gap-4 max-w-sm mx-auto">
+                <p id="popupMessage" class="text-lg font-medium text-center text-gray-800"></p>
+                <button id="popupOkButton" class="bg-blue-500 text-white p-3 rounded-xl font-semibold w-full hover:bg-blue-600 transition">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        const queryInput = document.getElementById('queryInput');
+        const mainActionButton = document.getElementById('mainActionButton');
+        const resultSection = document.getElementById('resultSection');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const answerDisplay = document.getElementById('answerDisplay');
+        const statusPopup = document.getElementById('statusPopup');
+        const popupMessage = document.getElementById('popupMessage');
+        const popupOkButton = document.getElementById('popupOkButton');
+
+        function showPopup(message) {
+            popupMessage.textContent = message;
+            statusPopup.classList.remove('hidden');
+        }
+
+        function hidePopup() {
+            statusPopup.classList.add('hidden');
+        }
+
+        popupOkButton.addEventListener('click', hidePopup);
+
+        async function callGemini(userQuery, systemPrompt, useSearch = false) {
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+            };
+
+            if (useSearch) {
+                payload.tools = [{ "google_search": {} }];
+            }
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+                const candidate = result.candidates?.[0];
+
+                if (candidate && candidate.content?.parts?.[0]?.text) {
+                    return candidate.content.parts[0].text;
+                } else {
+                    return "Không tìm thấy câu trả lời phù hợp. Vui lòng thử lại.";
+                }
+
+            } catch (error) {
+                console.error("Lỗi khi kết nối với Gemini:", error);
+                showPopup("Lỗi khi kết nối. Vui lòng thử lại sau.");
+                return "Đã xảy ra lỗi. Vui lòng thử lại.";
+            }
+        }
+
+        mainActionButton.addEventListener('click', async () => {
+            const query = queryInput.value.trim();
+            if (query === "") {
+                showPopup("Vui lòng nhập nội dung.");
+                return;
+            }
+
+            resultSection.classList.remove('hidden');
+            loadingIndicator.classList.remove('hidden');
+            answerDisplay.textContent = "";
+            mainActionButton.disabled = true;
+
+            let finalAnswer = "";
+            let userIntent = "";
+            let queryForGemini = query;
+
+            // Kiểm tra các từ khóa để xác định mục đích người dùng
+            const translateKeyword = query.toLowerCase().includes('sang tiếng anh') || query.toLowerCase().includes('dịch');
+            const summarizeKeyword = query.toLowerCase().includes('tóm tắt');
+            const creativeKeyword = query.toLowerCase().includes('viết') || query.toLowerCase().includes('sáng tạo') || query.toLowerCase().includes('kể');
+
+            if (summarizeKeyword) {
+                userIntent = 'summarize';
+            } else if (creativeKeyword) {
+                userIntent = 'creative';
+            } else {
+                userIntent = 'search'; // Mặc định là tìm kiếm
+            }
+
+            // Xử lý yêu cầu chính
+            if (userIntent === 'search') {
+                const systemPrompt = "Hãy tóm tắt câu trả lời trong một đoạn văn ngắn gọn, dễ hiểu và chỉ sử dụng tiếng Việt. Tuyệt đối không thêm bất kỳ thông tin nào không có trong nguồn tìm kiếm.";
+                finalAnswer = await callGemini(query, systemPrompt, true);
+            } else if (userIntent === 'creative') {
+                const systemPrompt = "Bạn là một nhà văn sáng tạo. Hãy viết một câu chuyện ngắn, một bài thơ hoặc một đoạn văn hài hước dựa trên chủ đề của người dùng. Viết bằng tiếng Việt.";
+                finalAnswer = await callGemini(query, systemPrompt);
+            } else if (userIntent === 'summarize') {
+                const systemPrompt = "Hãy tóm tắt văn bản dưới đây thành một đoạn văn ngắn gọn, dễ hiểu và chỉ bằng tiếng Việt.";
+                finalAnswer = await callGemini(query, systemPrompt);
+            }
+
+            // Xử lý dịch thuật nếu có từ khóa
+            if (translateKeyword) {
+                loadingIndicator.textContent = "Đã tìm thấy câu trả lời. Đang dịch sang tiếng Anh...";
+                const translatePrompt = "Hãy dịch văn bản sau sang tiếng Anh.";
+                finalAnswer = await callGemini(finalAnswer, translatePrompt);
+            }
+
+            loadingIndicator.classList.add('hidden');
+            answerDisplay.textContent = finalAnswer;
+            mainActionButton.disabled = false;
+        });
+    </script>
+</body>
+</html>
